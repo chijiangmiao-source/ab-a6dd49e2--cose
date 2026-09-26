@@ -1,0 +1,38 @@
+name: cose-review
+
+services:
+  app:
+    build: .
+    image: cose-review-app
+    environment:
+      REVIEW_DB: /data/reviews.db
+    volumes:
+      - reviews:/data
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  verify:
+    image: cose-review-app
+    build: .
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      APP_BASE_URL: http://app:8000
+      APP_SRC: app
+      APP_PAGE: app/static/index.html
+    command: ["python", "tests/verify.py"]
+
+volumes:
+  reviews:

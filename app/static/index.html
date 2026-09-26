@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>辐照校准包 COSE 复核台</title>
+<style>
+  :root {
+    --bg: #0f1419; --card: #1a2230; --border: #2c3a4f;
+    --text: #dbe4ee; --muted: #8fa1b7; --accent: #4da3ff;
+    --ok: #2fbf71; --bad: #e5534b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.55;
+  }
+  main { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: .92rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px; margin-bottom: 18px;
+  }
+  label { display: block; font-size: .9rem; color: var(--muted); margin: 12px 0 6px; }
+  input, textarea {
+    width: 100%; background: #101826; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 9px 11px; font-family: ui-monospace, Consolas, monospace; font-size: .85rem;
+  }
+  textarea { resize: vertical; }
+  button {
+    margin-top: 14px; background: var(--accent); color: #06121f; border: 0;
+    border-radius: 6px; padding: 9px 22px; font-size: .95rem; font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: wait; }
+  .row { display: flex; gap: 10px; align-items: flex-end; }
+  .row > div { flex: 1; }
+  .row button { margin-top: 0; white-space: nowrap; }
+  .err { color: var(--bad); font-size: .88rem; margin-left: 12px; }
+  .badge {
+    display: inline-block; padding: 3px 14px; border-radius: 999px;
+    font-size: .9rem; font-weight: 700; vertical-align: middle;
+  }
+  .badge.ok { background: rgba(47,191,113,.15); color: var(--ok); border: 1px solid var(--ok); }
+  .badge.bad { background: rgba(229,83,75,.15); color: var(--bad); border: 1px solid var(--bad); }
+  dl { display: grid; grid-template-columns: 150px 1fr; gap: 8px 16px; margin: 14px 0 0; }
+  dt { color: var(--muted); font-size: .9rem; }
+  dd { margin: 0; word-break: break-all; }
+  .mono, pre { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; }
+  pre {
+    background: #101826; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; margin: 0; overflow-x: auto; white-space: pre-wrap;
+  }
+  ul.reasons { margin: 0; padding-left: 20px; }
+  ul.reasons li { color: var(--bad); margin: 4px 0; }
+  .none { color: var(--ok); }
+  .hidden { display: none; }
+  details { margin-top: 4px; }
+  summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>辐照校准包 COSE 复核台</h1>
+  <p class="sub">粘贴 Ed25519 公钥与 COSE_Sign1 包（十六进制）。后端以严格确定性 CBOR 解析，并用原始受保护头字节与原始载荷构造 Sig_structure 验签，绝不重新序列化。</p>
+
+  <section class="card">
+    <h2>提交复核</h2>
+    <label for="pubkey">Ed25519 公钥（64 位十六进制）</label>
+    <input id="pubkey" spellcheck="false" autocomplete="off"
+           placeholder="例如 3b6a27bcceb6a42d62a3a8d02a6f0d73…">
+    <label for="pkg">COSE_Sign1 包（十六进制，可含空白）</label>
+    <textarea id="pkg" rows="7" spellcheck="false"
+              placeholder="d81284 43a10127 a0 58… 58 40…"></textarea>
+    <button id="submitBtn">提交复核</button>
+    <span id="formError" class="err"></span>
+  </section>
+
+  <section class="card">
+    <h2>按复核编号查询</h2>
+    <div class="row">
+      <div>
+        <label for="lookupId">复核编号</label>
+        <input id="lookupId" spellcheck="false" placeholder="RV-000001">
+      </div>
+      <button id="lookupBtn">查询</button>
+    </div>
+    <span id="lookupError" class="err"></span>
+  </section>
+
+  <section id="result" class="card hidden">
+    <h2>复核结果 <span id="badge" class="badge"></span></h2>
+    <dl>
+      <dt>复核编号</dt><dd id="rId" class="mono"></dd>
+      <dt>提交时间 (UTC)</dt><dd id="rTime"></dd>
+      <dt>包 SHA-256</dt><dd id="rPkgHash" class="mono"></dd>
+      <dt>受保护头</dt>
+      <dd>
+        <pre id="rProtected"></pre>
+        <details><summary>受保护头原始字节（验签所用）</summary>
+          <pre id="rProtectedRaw" class="mono"></pre>
+        </details>
+      </dd>
+      <dt>载荷 SHA-256</dt><dd id="rPayloadHash" class="mono"></dd>
+      <dt>载荷内容</dt>
+      <dd>
+        <pre id="rPayload"></pre>
+        <details><summary>载荷原始字节（验签所用）</summary>
+          <pre id="rPayloadRaw" class="mono"></pre>
+        </details>
+      </dd>
+      <dt>签名结论</dt><dd id="rSig"></dd>
+      <dt>逐项拒绝原因</dt>
+      <dd id="rReasonsWrap"><ul id="rReasons" class="reasons"></ul></dd>
+    </dl>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function api(path, options) {
+  const resp = await fetch(path, options);
+  let body = null;
+  try { body = await resp.json(); } catch (e) { /* non-JSON */ }
+  if (!resp.ok) {
+    const detail = body && body.detail ? body.detail : `HTTP ${resp.status}`;
+    throw new Error(detail);
+  }
+  return body;
+}
+
+async function submitReview() {
+  $("formError").textContent = "";
+  $("submitBtn").disabled = true;
+  try {
+    const record = await api("/api/reviews", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        public_key_hex: $("pubkey").value,
+        package_hex: $("pkg").value,
+      }),
+    });
+    localStorage.setItem("lastReviewId", record.review_id);
+    render(record);
+  } catch (e) {
+    $("formError").textContent = e.message;
+  } finally {
+    $("submitBtn").disabled = false;
+  }
+}
+
+async function lookup() {
+  $("lookupError").textContent = "";
+  const id = $("lookupId").value.trim();
+  if (!id) { $("lookupError").textContent = "请输入复核编号"; return; }
+  try {
+    const record = await api("/api/reviews/" + encodeURIComponent(id));
+    localStorage.setItem("lastReviewId", record.review_id);
+    render(record);
+  } catch (e) {
+    $("lookupError").textContent = e.message;
+  }
+}
+
+function render(r) {
+  $("result").classList.remove("hidden");
+  const accepted = r.conclusion === "accepted";
+  const badge = $("badge");
+  badge.textContent = accepted ? "通过" : "拒绝";
+  badge.className = "badge " + (accepted ? "ok" : "bad");
+
+  $("rId").textContent = r.review_id;
+  $("rTime").textContent = r.created_at;
+  $("rPkgHash").textContent = r.package_sha256;
+  $("rProtected").textContent = r.protected_headers
+    ? JSON.stringify(r.protected_headers, null, 2)
+    : "（受保护头无法解析）";
+  $("rProtectedRaw").textContent = r.protected_raw_hex || "（无）";
+  $("rPayloadHash").textContent = r.payload_sha256 || "（载荷缺失）";
+  $("rPayload").textContent = r.payload_json
+    ? JSON.stringify(r.payload_json, null, 2)
+    : "（载荷不是有效的 UTF-8 JSON 对象）";
+  $("rPayloadRaw").textContent = r.payload_hex || "（无）";
+
+  if (r.signature_valid === true) {
+    $("rSig").textContent = "验签通过（Ed25519 / EdDSA，基于原始字节）";
+    $("rSig").style.color = "var(--ok)";
+  } else if (r.signature_valid === false) {
+    $("rSig").textContent = "验签失败";
+    $("rSig").style.color = "var(--bad)";
+  } else {
+    $("rSig").textContent = "未执行（存在前置拒绝原因）";
+    $("rSig").style.color = "var(--muted)";
+  }
+
+  const ul = $("rReasons");
+  ul.innerHTML = "";
+  if (r.reasons && r.reasons.length) {
+    for (const reason of r.reasons) {
+      const li = document.createElement("li");
+      li.textContent = reason;
+      ul.appendChild(li);
+    }
+  } else {
+    const li = document.createElement("li");
+    li.textContent = "无 —— 所有检查均通过";
+    li.className = "none";
+    ul.appendChild(li);
+  }
+  $("result").scrollIntoView({behavior: "smooth", block: "nearest"});
+}
+
+$("submitBtn").addEventListener("click", submitReview);
+$("lookupBtn").addEventListener("click", lookup);
+$("lookupId").addEventListener("keydown", (e) => { if (e.key === "Enter") lookup(); });
+
+window.addEventListener("load", () => {
+  const last = localStorage.getItem("lastReviewId");
+  if (last) { $("lookupId").value = last; lookup(); }
+});
+</script>
+</body>
+</html>
